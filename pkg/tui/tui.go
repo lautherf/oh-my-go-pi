@@ -12,9 +12,7 @@ import (
 	"github.com/oh-my-pi/omp/pkg/tools"
 )
 
-var defaultTools = []agent.Tool{
-	&tools.GoDeclTool{},
-}
+
 
 type ChatMessage struct {
 	Role    string `json:"role"`
@@ -41,12 +39,25 @@ type Session struct {
 	mu       sync.Mutex
 }
 
-func NewSession(progProvider ai.Provider, req ai.Request, sessTools ...agent.Tool) (*Session, error) {
+func NewSession(progProvider ai.Provider, req ai.Request, extraTools ...agent.Tool) (*Session, error) {
 	a := agent.New(progProvider, req)
-	if len(sessTools) == 0 {
-		sessTools = defaultTools
+
+	workerTools := []agent.Tool{
+		&tools.GoDeclTool{},
+		&tools.ReadTool{},
+		&tools.WriteTool{},
+		&tools.BashTool{},
+		&tools.GrepTool{},
+		&tools.EditTool{},
+		&tools.WebSearchTool{},
+		&tools.WebFetchTool{},
 	}
-	for _, t := range sessTools {
+	for _, t := range workerTools {
+		a.RegisterTool(t)
+	}
+	a.RegisterTool(tools.NewSubAgentTool(progProvider, req, workerTools))
+
+	for _, t := range extraTools {
 		a.RegisterTool(t)
 	}
 	return &Session{
