@@ -105,6 +105,43 @@ func TestAgentWithGrepThenRead(t *testing.T) {
 	assert.Equal(t, int32(3), atomic.LoadInt32(&p.callCount))
 }
 
+func TestAgentWithSubAgentTool(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "data.txt"), []byte("worker was here\n"), 0644))
+
+	p := &integrationProvider{
+		responses: [][]ai.StreamEvent{
+			{
+				{Type: ai.EventToolCall, ToolCall: &ai.ToolCall{
+					ID: "call_1", Type: "function",
+					Function: ai.FunctionCall{Name: "subagent", Arguments: `{"task":"read data.txt in ` + dir + `"}`},
+				}},
+				{Type: ai.EventDone, FinishReason: "tool_calls"},
+			},
+			{
+				{Type: ai.EventText, Content: "Worker result: worker was here"},
+				{Type: ai.EventDone, FinishReason: "stop"},
+			},
+			{
+				{Type: ai.EventText, Content: "The subagent returned: worker was here"},
+				{Type: ai.EventDone, FinishReason: "stop"},
+			},
+		},
+	}
+
+	subagentTool := tools.NewSubAgentTool(p, ai.Request{Model: "test"}, []agent.Tool{
+		&tools.ReadTool{},
+	})
+
+	a := agent.New(p, ai.Request{Model: "test"})
+	a.RegisterTool(subagentTool)
+
+	resp, err := a.Run(context.Background(), "use subagent to read the file")
+	require.NoError(t, err)
+	assert.Contains(t, resp.Text, "The subagent returned: worker was here")
+}
+
 func TestAgentWithWriteThenRead(t *testing.T) {
 	dir := t.TempDir()
 	outPath := filepath.Join(dir, "created.txt")
