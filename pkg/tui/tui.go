@@ -7,8 +7,14 @@ import (
 	"sync"
 
 	"github.com/charmbracelet/glamour"
+	"github.com/oh-my-pi/omp/pkg/agent"
 	"github.com/oh-my-pi/omp/pkg/ai"
+	"github.com/oh-my-pi/omp/pkg/tools"
 )
+
+var defaultTools = []agent.Tool{
+	&tools.GoDeclTool{},
+}
 
 type ChatMessage struct {
 	Role    string `json:"role"`
@@ -30,14 +36,23 @@ func (m ChatMessage) Render() string {
 type Session struct {
 	provider ai.Provider
 	req      ai.Request
+	agent    *agent.Agent
 	messages []ChatMessage
 	mu       sync.Mutex
 }
 
-func NewSession(provider ai.Provider, req ai.Request) (*Session, error) {
+func NewSession(progProvider ai.Provider, req ai.Request, sessTools ...agent.Tool) (*Session, error) {
+	a := agent.New(progProvider, req)
+	if len(sessTools) == 0 {
+		sessTools = defaultTools
+	}
+	for _, t := range sessTools {
+		a.RegisterTool(t)
+	}
 	return &Session{
-		provider: provider,
+		provider: progProvider,
 		req:      req,
+		agent:    a,
 	}, nil
 }
 
@@ -76,34 +91,16 @@ func (s *Session) Send(ctx context.Context, input string) (string, error) {
 	s.messages = append(s.messages, ChatMessage{Role: "user", Content: input})
 	s.mu.Unlock()
 
-	aiMsgs := s.toAIMessages()
-
-	req := s.req
-	req.Messages = aiMsgs
-	req.Stream = true
-
-	ch, err := s.provider.Stream(ctx, req)
+	resp, err := s.agent.Run(ctx, input)
 	if err != nil {
 		return "", fmt.Errorf("tui: %w", err)
 	}
 
-	var resp strings.Builder
-	for event := range ch {
-		switch event.Type {
-		case ai.EventText:
-			resp.WriteString(event.Content)
-		case ai.EventError:
-			return "", fmt.Errorf("tui error: %s", event.Content)
-		case ai.EventDone:
-			text := resp.String()
-			s.mu.Lock()
-			s.messages = append(s.messages, ChatMessage{Role: "assistant", Content: text})
-			s.mu.Unlock()
-			return text, nil
-		}
-	}
-
-	return "", fmt.Errorf("tui: stream ended without completion")
+	text := resp.Text
+	s.mu.Lock()
+	s.messages = append(s.messages, ChatMessage{Role: "assistant", Content: text})
+	s.mu.Unlock()
+	return text, nil
 }
 
 func (s *Session) toAIMessages() []ai.Message {
