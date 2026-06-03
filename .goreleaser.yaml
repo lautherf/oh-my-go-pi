@@ -1,0 +1,77 @@
+version: 2
+
+project_name: omp
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: omp
+    main: ./cmd/omp
+    binary: omp
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      - goos: windows
+        goarch: arm64
+    ldflags:
+      - -s -w -X main.version={{ .Version }} -X main.commit={{ .Commit }} -X main.date={{ .Date }}
+
+archives:
+  - id: omp
+    builds: [omp]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    format: tar.gz
+    format_overrides:
+      - goos: windows
+        format: zip
+    files:
+      - LICENSE
+      - README.md
+
+checksum:
+  name_template: "{{ .ProjectName }}_{{ .Version }}_checksums.txt"
+
+snapshot:
+  version_template: "{{ .Version }}-SNAPSHOT-{{ .ShortCommit }}"
+
+release:
+  draft: true
+  replace_existing_draft: true
+
+nfpms:
+  - id: omp
+    package_name: omp
+    file_name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    builds: [omp]
+    vendor: oh-my-pi
+    homepage: https://github.com/anomalyco/opencode
+    description: AI coding agent
+    maintainer: oh-my-pi
+    license: MIT
+    formats:
+      - deb
+      - rpm
+      - apk
+
+brews:
+  - name: omp
+    repository:
+      owner: anomalyco
+      name: homebrew-omp
+    commit_author:
+      name: goreleaserbot
+      email: bot@anomaly.co
+    homepage: https://github.com/anomalyco/opencode
+    description: AI coding agent
+    license: MIT
+    install: |
+      bin.install "omp"
