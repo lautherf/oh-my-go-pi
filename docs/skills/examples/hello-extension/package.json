@@ -1,8 +1,0 @@
-{
-  "name": "hello-extension",
-  "version": "1.0.0",
-  "description": "Minimal oh-my-pi extension example",
-  "omp": {
-    "extensions": ["./index.ts"]
-  }
-}
